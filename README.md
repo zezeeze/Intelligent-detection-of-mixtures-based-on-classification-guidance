@@ -148,16 +148,7 @@ The framework automatically generates:
 If you use this code in your research, please cite the corresponding publication.
 
 ```bibtex
-@article{YourPaper2026,
-  title={Physics-Informed CNN-Transformer Expert Framework for Multi-Component Groundwater Contaminant Identification and Quantification},
-  author={Your Name},
-  journal={To be published},
-  year={2026}
+@article{Deep Learning for Rapid Analysis of PFAS-Heavy Metal Mixtures in Industrial Wastewater},
+
 }
-```
 
----
-
-## License
-
-MIT License
