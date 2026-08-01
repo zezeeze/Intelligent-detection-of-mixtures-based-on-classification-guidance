@@ -28,6 +28,7 @@ CONFIG = {
     "EPOCHS": 300,
     "LR": 1e-3,
     "TEST_SIZE": 0.2,
+    "FINAL_VAL_SIZE": 0.2,
     "RANDOM_SEED": 42,
     "PATIENCE": 50,
     "N_SPLITS": 5,
@@ -267,6 +268,60 @@ def build_dataloaders(X_train, X_val, y_cls_train, y_cls_val, y_reg_train, y_reg
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
     return train_loader, val_loader, scaler_X, scaler_hms, scaler_pfas
+
+
+
+def build_final_dataloaders(X_dev, X_test, y_cls_dev, y_cls_test, y_reg_dev, y_reg_test, hms_cols, pfas_cols, batch_size):
+    """Create internal train/validation loaders from the development set and a strictly held-out test loader.
+
+    The development set is split into internal training and validation subsets.
+    All scalers are fitted only on the internal training subset and then applied
+    unchanged to the internal validation and held-out test subsets.
+    """
+    (X_train, X_val,
+     y_cls_train, y_cls_val,
+     y_reg_train, y_reg_val) = train_test_split(
+        X_dev, y_cls_dev, y_reg_dev,
+        test_size=CONFIG["FINAL_VAL_SIZE"],
+        random_state=CONFIG["RANDOM_SEED"]
+    )
+
+    num_hms = len(hms_cols)
+    y_hms_train = y_reg_train[:, :num_hms]
+    y_hms_val = y_reg_val[:, :num_hms]
+    y_hms_test = y_reg_test[:, :num_hms]
+    y_pfas_train = y_reg_train[:, num_hms:]
+    y_pfas_val = y_reg_val[:, num_hms:]
+    y_pfas_test = y_reg_test[:, num_hms:]
+
+    scaler_X = None
+    if CONFIG["PREPROCESS_X"]:
+        scaler_X = get_scaler(CONFIG["X_MODE"])
+        X_train = scaler_X.fit_transform(X_train)
+        X_val = scaler_X.transform(X_val)
+        X_test = scaler_X.transform(X_test)
+
+    scaler_hms, scaler_pfas = None, None
+    if CONFIG["PREPROCESS_Y"]:
+        scaler_hms = get_scaler(CONFIG["HMS_Y_MODE"])
+        y_hms_train = scaler_hms.fit_transform(y_hms_train)
+        y_hms_val = scaler_hms.transform(y_hms_val)
+        y_hms_test = scaler_hms.transform(y_hms_test)
+
+        scaler_pfas = get_scaler(CONFIG["PFAS_Y_MODE"])
+        y_pfas_train = scaler_pfas.fit_transform(y_pfas_train)
+        y_pfas_val = scaler_pfas.transform(y_pfas_val)
+        y_pfas_test = scaler_pfas.transform(y_pfas_test)
+
+    train_set = SpecDataset(X_train, y_cls_train, y_hms_train, y_pfas_train)
+    val_set = SpecDataset(X_val, y_cls_val, y_hms_val, y_pfas_val)
+    test_set = SpecDataset(X_test, y_cls_test, y_hms_test, y_pfas_test)
+
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
+
+    return train_loader, val_loader, test_loader, scaler_X, scaler_hms, scaler_pfas
 
 def train_expert(model, train_loader, val_loader, epochs, lr, task, save_path=None):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
@@ -792,7 +847,7 @@ if __name__ == "__main__":
         print("Training final models with best parameters")
         print("=" * 60)
 
-        train_loader_full, test_loader, scaler_X_full, scaler_hms_full, scaler_pfas_full = build_dataloaders(
+        train_loader_full, val_loader_final, test_loader, scaler_X_full, scaler_hms_full, scaler_pfas_full = build_final_dataloaders(
             X_trainval, X_test,
             y_cls_trainval, y_cls_test,
             y_reg_trainval, y_reg_test,
@@ -811,7 +866,7 @@ if __name__ == "__main__":
             num_layers=best_params_cls["NUM_LAYERS"]
         ).to(DEVICE)
         model_cls, _ = train_expert(
-            model_cls, train_loader_full, test_loader,
+            model_cls, train_loader_full, val_loader_final,
             epochs=CONFIG["EPOCHS"],
             lr=best_params_cls["LR"],
             task="cls",
@@ -826,7 +881,7 @@ if __name__ == "__main__":
             num_layers=best_params_hms["NUM_LAYERS"]
         ).to(DEVICE)
         model_hms, _ = train_expert(
-            model_hms, train_loader_full, test_loader,
+            model_hms, train_loader_full, val_loader_final,
             epochs=CONFIG["EPOCHS"],
             lr=best_params_hms["LR"],
             task="reg_hms",
@@ -841,7 +896,7 @@ if __name__ == "__main__":
             num_layers=best_params_pfas["NUM_LAYERS"]
         ).to(DEVICE)
         model_pfas, _ = train_expert(
-            model_pfas, train_loader_full, test_loader,
+            model_pfas, train_loader_full, val_loader_final,
             epochs=CONFIG["EPOCHS"],
             lr=best_params_pfas["LR"],
             task="reg_pfas",
