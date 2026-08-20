@@ -1,3 +1,5 @@
+Due to the file size limit for upload, the original absorbance file has been split into 4 separate files. Before conducting the model training, these 4 absorbance datasets need to be merged into a single xlsx file, and then the model training can be performed.
+
 # SpectralExpertPINN
 
 A deep-learning framework for simultaneous qualitative identification and quantitative prediction of groundwater contaminants using UV–Vis absorption spectra.
